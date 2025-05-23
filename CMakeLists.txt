@@ -8,13 +8,24 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_library(glad ${CMAKE_CURRENT_SOURCE_DIR}/src/glad/glad.c)
+option(BUILD_MAIN "Build just the main branch" ON)
+option(BUILD_EVERYTHING "Build tests and main branch" OFF)
+option(BUILD_TESTS "Build the tests" OFF)
 
-find_package(glfw3 REQUIRED)
-find_package(Catch2 REQUIRED)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-add_executable(main "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
-target_link_libraries(main glfw glad)
+if(BUILD_EVERYTHING)
+	add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/tests")
+	add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/editor")
+endif()
+
+if(BUILD_MAIN)
+	add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/editor")
+endif()
+
+if(BUILD_TESTS)
+	add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/tests")
+endif()
 
 
 execute_process(COMMAND mv
