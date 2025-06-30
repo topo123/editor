@@ -5,8 +5,13 @@ if [[ ! -d "build-tests" && "$1" = "tests" ]]; then
 	cmake -B build-tests -G Ninja -DBUILD_MAIN=OFF -DBUILD_TESTS=ON -DBUILD_EVERYTHING=OFF
 elif [[ ! -d "build" && "$1" = "main" ]]; then
 	cmake -B build -G Ninja -DBUILD_MAIN=ON -DBUILD_TESTS=OFF -DBUILD_EVERYTHING=OFF
-elif [[ (! -d "build" || ! -d "build-tests") && "$1" = "all" ]]; then
-	cmake -B build -G Ninja -DBUILD_MAIN=OFF -DBUILD_TESTS=OFF -DBUILD_EVERYTHING=ON
+fi
+
+if [[ (! -d "build") && "$1" = "all" ]]; then
+	cmake -B build -G Ninja -DBUILD_MAIN=ON -DBUILD_TESTS=OFF -DBUILD_EVERYTHING=OFF
+fi
+if [[ (! -d "build-tests") && "$1" = "all" ]]; then
+	cmake -B build-tests -G Ninja -DBUILD_MAIN=OFF -DBUILD_TESTS=ON -DBUILD_EVERYTHING=OFF
 fi
 
 if [ "$1" = "tests" ]; then

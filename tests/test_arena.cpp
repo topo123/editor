@@ -15,12 +15,12 @@ TEST_CASE("Allocation test", "[arena]")
 {
 	BumpArena* arena = init_bump_arena(128);
 
-	char* str = (char*)allocate(arena, 8, 1);
+	char* str = (char*)bump_alloc(arena, 8, 1);
 	str[0] = 'c';
 	str[1] = 'h';
 	str[2] = 'a';
 	str[3] = 'r';
-	char* str2 = (char*)allocate(arena, 16, 1);
+	char* str2 = (char*)bump_alloc(arena, 16, 1);
 
 	REQUIRE(str[0] == 'c');
 	REQUIRE(arena->head->offset == 24);
@@ -33,8 +33,8 @@ TEST_CASE("Growing arena", "[arena]")
 	BumpArena* arena = init_bump_arena(128);
 	Chunk* init_chunk = arena->head;
 
-	char* str = (char*)allocate(arena, 128, 1);
-	char* str2 = (char*)allocate(arena, 128, 1);
+	char* str = (char*)bump_alloc(arena, 128, 1);
+	char* str2 = (char*)bump_alloc(arena, 128, 1);
 
 	REQUIRE(arena->head != init_chunk);
 	REQUIRE(arena->head->chunk_size == 256);
@@ -50,7 +50,7 @@ TEST_CASE("Alignment test", "[arena]")
 {
 	BumpArena* arena = init_bump_arena(128, 8);
 
-	small* smat = (small*)allocate(arena, sizeof(small), 8);
+	small* smat = (small*)bump_alloc(arena, sizeof(small), 8);
 
 	REQUIRE((uintptr_t)smat % 8 == 0);
 	free_arena(arena);

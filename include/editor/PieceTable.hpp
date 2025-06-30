@@ -28,9 +28,11 @@ struct PieceTable
 	std::vector<Piece*> piece_list;
 };
 
-PieceTable* init_piece_table(PieceTable* table, const std::string file_name, size_t type_buffer_size, size_t init_store_buffer_size);
-void insert_text(PieceTable* table, char* buffer, size_t insert_pos);
+PieceTable* init_piece_table(const std::string file_name, size_t type_buffer_size, size_t init_num_pieces = 8);
+void insert_text(PieceTable* table, char* buffer, size_t buffer_size);
 void rdelete_text(PieceTable* table, size_t num_chars);
 void ldelete_text(PieceTable* table, size_t num_chars);
 void lseek(PieceTable* table, size_t offset);
 void rseek(PieceTable* table, size_t offset);
+void free_table(PieceTable* table);
+void print_table(PieceTable* table);
