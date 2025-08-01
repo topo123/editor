@@ -1,0 +1,292 @@
+#include "BumpArena.hpp"
+#include "Renderer.hpp"
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <iostream>
+#include <fstream>
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <map>
+#include <cstring>
+
+std::map<char, RenderChar*> renderchar_map;
+
+int compile_shaders(const std::string vertex_shader_path, const std::string frag_shader_path)
+{
+	std::ifstream reader(vertex_shader_path);
+
+	if(!reader)
+	{
+		std::cout << "Failed to open the vertex shader" << std::endl;
+		return -1;
+	}
+
+	std::string vert_shader = "";
+	std::string frag_shader = "";
+	char c = '\0';
+
+	while(reader.get(c))
+	{
+		vert_shader += c;
+	}
+
+	reader.close();
+	reader.open(frag_shader_path);
+	if(!reader)
+	{
+		std::cout << "Failed to open the fragment shader" << std::endl;
+		return -1;
+	}
+
+	while(reader.get(c))
+	{
+		frag_shader += c;
+	}
+
+	const char* vert_shader_copy = (const char*)&vert_shader[0];
+	const char* frag_shader_copy = (const char*)&frag_shader[0];
+
+	unsigned int v_shader = glCreateShader(GL_VERTEX_SHADER);
+	glShaderSource(v_shader, 1, &vert_shader_copy, nullptr);
+	glCompileShader(v_shader);
+
+	int success;
+	char log[512];
+	glGetShaderiv(v_shader, GL_COMPILE_STATUS, &success);
+	if(!success)
+	{
+		glGetShaderInfoLog(v_shader, 512, nullptr, log);
+		std::cout << "ERROR LOG:VERT_SHADER: " << log << std::endl;
+		return -1;
+	}
+
+	unsigned int f_shader = glCreateShader(GL_FRAGMENT_SHADER);
+	glShaderSource(f_shader, 1, &frag_shader_copy, nullptr);
+	glCompileShader(f_shader);
+	glGetShaderiv(f_shader, GL_COMPILE_STATUS, &success);
+	if(!success)
+	{
+		glGetShaderInfoLog(f_shader, 512, nullptr, log);
+		std::cout << "ERROR LOG:FRAG_SHADER: " << log << std::endl;
+		return -1;
+	}
+
+	unsigned int shader_program = glCreateProgram();
+	glAttachShader(shader_program, v_shader);
+	glAttachShader(shader_program, f_shader);
+	glLinkProgram(shader_program);
+
+	glDeleteShader(v_shader);
+	glDeleteShader(f_shader);
+
+	return shader_program;
+}
+
+void init_render_data(Renderer* render, const std::string v_shader_path, const std::string f_shader_path)
+{
+	int shader_program = compile_shaders(v_shader_path, f_shader_path);
+	assert(shader_program > 0);
+	render->shader_program = shader_program;
+	render->renderchar_arena = init_bump_arena(128 * sizeof(RenderChar), 4);
+
+	glUseProgram(render->shader_program);
+
+	glm::mat4 ortho_proj = glm::ortho(0.0f, 800.0f, 600.0f, 0.0f, -1.0f, 1.0f);
+	int ortho_proj_location = glGetUniformLocation(render->shader_program, "ortho_projection");
+	assert(ortho_proj_location != -1);
+	glUniformMatrix4fv(ortho_proj_location, 1, GL_FALSE, glm::value_ptr(ortho_proj));
+
+	unsigned int bitmap_atlas_texture = create_bitmap_font_atlas_texture("/usr/share/fonts/TTF/Hack-Regular.ttf", render->renderchar_arena, 24, 16, 8);
+	render->bitmap_atlas_texture = bitmap_atlas_texture;
+
+	float quad_VBO[] = {
+		0.0f, 0.0f, 0.0f, 0.0f,
+		1.0f, 0.0f, 1.0f, 0.0f,
+		1.0f, 1.0f, 1.0f, 1.0f,
+		0.0f, 1.0f, 0.0f, 1.0f
+	};
+
+	unsigned int quad_EBO[] = {
+		0, 1, 2,
+		0, 3, 2
+	};
+
+	unsigned int EBO;
+	unsigned int VBO;
+
+	glGenVertexArrays(1, &render->quad_VAO);
+	glGenBuffers(1, &VBO);
+	glGenBuffers(1, &EBO);
+
+	glBindVertexArray(render->quad_VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad_VBO), quad_VBO, GL_STATIC_DRAW);
+
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_EBO), quad_EBO, GL_STATIC_DRAW);
+
+
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+
+	glBindVertexArray(0);
+}
+
+void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
+{
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glUseProgram(render->shader_program);
+
+	glm::mat4 model = glm::mat4(1.0f);
+
+	model = glm::translate(model, glm::vec3(position, 0.0f));
+	model = glm::scale(model, glm::vec3(size, 1.0f));
+
+	int model_ptr = glGetUniformLocation(render->shader_program, "model");
+	assert(model_ptr != -1);
+	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
+
+	glBindTexture(GL_TEXTURE_2D, render->bitmap_atlas_texture);
+	glBindVertexArray(render->quad_VAO);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
+
+}
+
+int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* renderchar_arena, const unsigned int text_height, const unsigned int horz_bitmap_cells, const unsigned int vert_bitmap_cells)
+{
+	FT_Library glyph_maker;
+	if(FT_Init_FreeType(&glyph_maker))
+	{
+		std::cout << "Failed to initalize the free type library returning an error\n";
+		return -1;
+	}
+
+	FT_Face glyph_face;
+	if(FT_New_Face(glyph_maker, &font_path[0], 0, &glyph_face))
+	{
+		std::cout << "Failed to load a font returning an error\n";
+		return -1;
+	}
+
+	FT_Set_Pixel_Sizes(glyph_face, 0, 48);
+
+	BumpArena* renderchar_data_arena = init_bump_arena(1024 * 1024, 1);
+	std::map<char, unsigned char*> renderchar_data;
+	unsigned int cell_width = 0;
+	unsigned int cell_height = 0;
+
+	RenderChar* checker;
+
+	for(unsigned char c = 0; c < 128; c ++)
+	{
+
+		if(FT_Load_Char(glyph_face, c, FT_LOAD_RENDER))
+		{
+			std::cout << "Failed to load " << c << " moving on.\n";
+			return -1;
+		}
+
+
+		RenderChar* render_character = (RenderChar*)bump_alloc(renderchar_arena, sizeof(RenderChar), 4);
+		render_character->advance = glyph_face->glyph->advance.x;
+		render_character->bearing = glm::ivec2(glyph_face->glyph->bitmap_left, glyph_face->glyph->bitmap_top);
+		render_character->size = glm::ivec2(glyph_face->glyph->bitmap.pitch, glyph_face->glyph->bitmap.rows);
+
+		if(c == 1)
+		{
+			checker = render_character;
+		}
+
+
+		if(glyph_face->glyph->bitmap.pitch < 0)
+		{
+			std::cout << c << " has a negative pitch.\n";
+		}
+
+
+		unsigned char* render_character_data = (unsigned char*)bump_alloc(renderchar_data_arena, render_character->size.x * render_character->size.y, 1);
+		std::memcpy(render_character_data, glyph_face->glyph->bitmap.buffer, render_character->size.x * render_character->size.y);
+
+		renderchar_data.insert(std::pair<char, unsigned char*>(c, render_character_data));
+		renderchar_map.insert(std::pair<char, RenderChar*>(c, render_character));
+
+		cell_width = cell_width < render_character->size.x? render_character->size.x: cell_width;
+		cell_height = cell_height < render_character->size.y? render_character->size.y: cell_height;
+	}
+
+	int bitmap_width = cell_width * horz_bitmap_cells;
+	int bitmap_height = cell_height * vert_bitmap_cells;
+
+	unsigned char* bitmap_atlas = (unsigned char*)bump_alloc(renderchar_data_arena, bitmap_width * bitmap_height, 1);
+	std::memset(bitmap_atlas, 1, bitmap_width * bitmap_height);
+
+	int cell_row_number = 0;
+	int cell_column_number = 0;
+
+	int h_offset = 0;
+	int v_offset = 0;
+
+
+	unsigned char* render_char_buffer = nullptr;
+
+	for(unsigned char c = 0; c < 128; c ++)
+	{
+		RenderChar* render_char = renderchar_map[c];
+
+		h_offset = (cell_width - render_char->size.x)/2;
+		v_offset = (cell_height - render_char->size.y)/2;
+
+		render_char_buffer = renderchar_data[c];
+
+		uintptr_t starting_px = (uintptr_t(bitmap_atlas) + 
+			(bitmap_width * cell_height * cell_row_number + cell_column_number * cell_width)
+			+ (v_offset * bitmap_width + h_offset));
+
+		render_char->offset = glm::ivec2(cell_column_number * cell_width + h_offset, cell_row_number * cell_height + v_offset);
+
+		for(int i = 0; i < render_char->size.y; i ++)
+		{
+			void* bitmap_atlas_position = (void*)(starting_px + (i * bitmap_width));
+			void* render_char_buffer_copy_position = (void*)((uintptr_t)render_char_buffer + (i * render_char->size.x));
+			assert((void*)render_char_buffer <= render_char_buffer_copy_position);
+			std::memcpy(bitmap_atlas_position, render_char_buffer_copy_position, render_char->size.x);	
+		}
+
+		cell_column_number ++;
+		if(cell_column_number == horz_bitmap_cells)
+		{
+			cell_column_number = 0;
+			cell_row_number ++;
+		}
+
+	}
+
+	unsigned int bitmap_atlas_texture;  
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glGenTextures(1, &bitmap_atlas_texture);
+	glBindTexture(GL_TEXTURE_2D, bitmap_atlas_texture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, bitmap_width, bitmap_height, 0, GL_RED, GL_UNSIGNED_BYTE, bitmap_atlas);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	free_arena(renderchar_data_arena);
+
+	FT_Done_Face(glyph_face);
+	FT_Done_FreeType(glyph_maker);
+
+	return bitmap_atlas_texture;
+}

@@ -1,10 +1,15 @@
 #include <iostream>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include "Renderer.hpp"
 
 void framebuffer_callback(GLFWwindow* window, int width, int height)
 {
 	glViewport(0, 0, width, height);
+}
+
+void processInput(GLFWwindow* window)
+{
 }
 
 
@@ -13,6 +18,7 @@ int main(){
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 	GLFWwindow* window = glfwCreateWindow(800, 600, "Text editor", nullptr, nullptr);
 	if(window == nullptr)
@@ -33,8 +39,13 @@ int main(){
 	glViewport(0, 0, 800, 600);
 	glfwSetFramebufferSizeCallback(window, framebuffer_callback);
 
+	Renderer render;
+	init_render_data(&render, "src/shaders/vert-shader.glsl", "src/shaders/frag-shader.glsl");
+
 	while(!glfwWindowShouldClose(window))
 	{
+		processInput(window);
+		render_quad(&render, glm::vec2(200.0f, 200.0f), glm::vec2(10.0f, 10.0f));
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
