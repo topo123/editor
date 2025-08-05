@@ -45,6 +45,9 @@ int main(){
 	while(!glfwWindowShouldClose(window))
 	{
 		processInput(window);
+		glClearColor(0.350f, 0.35f, 0.35f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		render_character(&render, glm::vec2(300, 300), '<');
 		render_quad(&render, glm::vec2(200.0f, 200.0f), glm::vec2(10.0f, 10.0f));
 		glfwSwapBuffers(window);
 		glfwPollEvents();

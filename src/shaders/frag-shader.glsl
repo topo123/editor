@@ -7,5 +7,5 @@ uniform sampler2D bitmap_atlas_texture;
 
 void main()
 {
-	FragColor = texture(bitmap_atlas_texture, tex_coords) * vec4(1.0f, 1.0f, 1.0f, 1.0f);
+	FragColor = texture(bitmap_atlas_texture, tex_coords);
 }

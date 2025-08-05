@@ -11,7 +11,7 @@
 #include <map>
 #include <cstring>
 
-std::map<char, RenderChar*> renderchar_map;
+std::map<unsigned char, RenderChar*> renderchar_map;
 
 int compile_shaders(const std::string vertex_shader_path, const std::string frag_shader_path)
 {
@@ -98,7 +98,7 @@ void init_render_data(Renderer* render, const std::string v_shader_path, const s
 	assert(ortho_proj_location != -1);
 	glUniformMatrix4fv(ortho_proj_location, 1, GL_FALSE, glm::value_ptr(ortho_proj));
 
-	unsigned int bitmap_atlas_texture = create_bitmap_font_atlas_texture("/usr/share/fonts/TTF/Hack-Regular.ttf", render->renderchar_arena, 24, 16, 8);
+	unsigned int bitmap_atlas_texture = create_bitmap_font_atlas_texture("fonts/AdwaitaMono-Regular.ttf", render->renderchar_arena, 48, 16, 8, 0, 128);
 	render->bitmap_atlas_texture = bitmap_atlas_texture;
 
 	float quad_VBO[] = {
@@ -139,11 +139,33 @@ void init_render_data(Renderer* render, const std::string v_shader_path, const s
 	glBindVertexArray(0);
 }
 
+void render_character(Renderer* render, glm::vec2 position, unsigned char character)
+{	
+	glUseProgram(render->shader_program);
+
+	glm::mat4 model = glm::mat4(1.0f);
+
+	model = glm::translate(model, glm::vec3(position, 0.0f));
+	model = glm::scale(model, glm::vec3(renderchar_map[character]->size, 1.0f));
+
+	int model_ptr = glGetUniformLocation(render->shader_program, "model");
+	assert(model_ptr != -1);
+	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
+
+	int shader_UV = glGetUniformLocation(render->shader_program, "offset");
+	assert(shader_UV != -1);
+	glm::fvec4 uv_coords = renderchar_map[character]->uv_coords;
+
+	glUniform4f(shader_UV, uv_coords.x, uv_coords.y, uv_coords.z, uv_coords.w);
+
+	glBindTexture(GL_TEXTURE_2D, render->bitmap_atlas_texture);
+	glBindVertexArray(render->quad_VAO);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
+}
+
 void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 {
-	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-
 	glUseProgram(render->shader_program);
 
 	glm::mat4 model = glm::mat4(1.0f);
@@ -155,6 +177,10 @@ void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 	assert(model_ptr != -1);
 	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
 
+	int shader_UV = glGetUniformLocation(render->shader_program, "offset");
+	assert(shader_UV != -1);
+	glUniform4f(shader_UV, 0.0f, 0.0f, 1.0f, 1.0f);
+
 	glBindTexture(GL_TEXTURE_2D, render->bitmap_atlas_texture);
 	glBindVertexArray(render->quad_VAO);
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
@@ -162,7 +188,7 @@ void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 
 }
 
-int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* renderchar_arena, const unsigned int text_height, const unsigned int horz_bitmap_cells, const unsigned int vert_bitmap_cells)
+int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* renderchar_arena, const unsigned int text_height, const unsigned int horz_bitmap_cells, const unsigned int vert_bitmap_cells, unsigned char starting_character, unsigned char ending_character)
 {
 	FT_Library glyph_maker;
 	if(FT_Init_FreeType(&glyph_maker))
@@ -178,16 +204,14 @@ int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* ren
 		return -1;
 	}
 
-	FT_Set_Pixel_Sizes(glyph_face, 0, 48);
+	FT_Set_Pixel_Sizes(glyph_face, 0, text_height);
 
 	BumpArena* renderchar_data_arena = init_bump_arena(1024 * 1024, 1);
-	std::map<char, unsigned char*> renderchar_data;
+	std::map<unsigned char, unsigned char*> renderchar_data;
 	unsigned int cell_width = 0;
 	unsigned int cell_height = 0;
 
-	RenderChar* checker;
-
-	for(unsigned char c = 0; c < 128; c ++)
+	for(unsigned char c = starting_character; c < ending_character; c ++)
 	{
 
 		if(FT_Load_Char(glyph_face, c, FT_LOAD_RENDER))
@@ -201,18 +225,6 @@ int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* ren
 		render_character->advance = glyph_face->glyph->advance.x;
 		render_character->bearing = glm::ivec2(glyph_face->glyph->bitmap_left, glyph_face->glyph->bitmap_top);
 		render_character->size = glm::ivec2(glyph_face->glyph->bitmap.pitch, glyph_face->glyph->bitmap.rows);
-
-		if(c == 1)
-		{
-			checker = render_character;
-		}
-
-
-		if(glyph_face->glyph->bitmap.pitch < 0)
-		{
-			std::cout << c << " has a negative pitch.\n";
-		}
-
 
 		unsigned char* render_character_data = (unsigned char*)bump_alloc(renderchar_data_arena, render_character->size.x * render_character->size.y, 1);
 		std::memcpy(render_character_data, glyph_face->glyph->bitmap.buffer, render_character->size.x * render_character->size.y);
@@ -239,7 +251,7 @@ int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* ren
 
 	unsigned char* render_char_buffer = nullptr;
 
-	for(unsigned char c = 0; c < 128; c ++)
+	for(unsigned char c = starting_character; c < ending_character; c ++)
 	{
 		RenderChar* render_char = renderchar_map[c];
 
@@ -252,7 +264,10 @@ int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* ren
 			(bitmap_width * cell_height * cell_row_number + cell_column_number * cell_width)
 			+ (v_offset * bitmap_width + h_offset));
 
-		render_char->offset = glm::ivec2(cell_column_number * cell_width + h_offset, cell_row_number * cell_height + v_offset);
+		render_char->uv_coords = glm::fvec4((float)cell_column_number/(float)horz_bitmap_cells, 
+																			((float)cell_row_number/(float)vert_bitmap_cells),
+																			((float)cell_column_number/(float)horz_bitmap_cells) + (1.0f/(float)horz_bitmap_cells),
+																			(((float)cell_row_number/(float)vert_bitmap_cells)) + (1.0f/(float)vert_bitmap_cells));
 
 		for(int i = 0; i < render_char->size.y; i ++)
 		{

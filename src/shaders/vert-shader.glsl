@@ -7,9 +7,10 @@ out vec2 tex_coords;
 
 uniform mat4 model;
 uniform mat4 ortho_projection;
+uniform vec4 offset;
 
 void main()
 {
-	tex_coords = in_tex_coords;
+	tex_coords = mix(offset.xy, offset.zw, in_tex_coords);
 	gl_Position = ortho_projection * model * vec4(quad_vertices.xy, 0.0f, 1.0f);
 }
