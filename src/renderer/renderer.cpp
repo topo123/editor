@@ -1,5 +1,6 @@
 #include "BumpArena.hpp"
 #include "Renderer.hpp"
+#include "PieceTable.hpp"
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <iostream>
@@ -10,7 +11,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <map>
 #include <cstring>
-
 std::map<unsigned char, RenderChar*> renderchar_map;
 
 int compile_shaders(const std::string vertex_shader_path, const std::string frag_shader_path)
@@ -84,21 +84,32 @@ int compile_shaders(const std::string vertex_shader_path, const std::string frag
 	return shader_program;
 }
 
-void init_render_data(Renderer* render, const std::string v_shader_path, const std::string f_shader_path)
+void init_render_data(Renderer* render)
 {
-	int shader_program = compile_shaders(v_shader_path, f_shader_path);
-	assert(shader_program > 0);
-	render->shader_program = shader_program;
+	int quad_shader_program = compile_shaders("src/shaders/quad-vert-shader.glsl", "src/shaders/quad-frag-shader.glsl");
+	int char_shader_program = compile_shaders("src/shaders/char-vert-shader.glsl", "src/shaders/char-frag-shader.glsl");
+
+	assert(quad_shader_program > 0);
+	assert(char_shader_program > 0);
+
+	render->quad_shader_program = quad_shader_program;
+	render->char_shader_program = char_shader_program;
 	render->renderchar_arena = init_bump_arena(128 * sizeof(RenderChar), 4);
 
-	glUseProgram(render->shader_program);
+	glUseProgram(render->quad_shader_program);
 
 	glm::mat4 ortho_proj = glm::ortho(0.0f, 800.0f, 600.0f, 0.0f, -1.0f, 1.0f);
-	int ortho_proj_location = glGetUniformLocation(render->shader_program, "ortho_projection");
+	int ortho_proj_location = glGetUniformLocation(render->quad_shader_program, "ortho_projection");
 	assert(ortho_proj_location != -1);
 	glUniformMatrix4fv(ortho_proj_location, 1, GL_FALSE, glm::value_ptr(ortho_proj));
 
-	unsigned int bitmap_atlas_texture = create_bitmap_font_atlas_texture("fonts/AdwaitaMono-Regular.ttf", render->renderchar_arena, 48, 16, 8, 0, 128);
+	glUseProgram(render->char_shader_program);
+
+	int ortho_proj_location1 = glGetUniformLocation(render->char_shader_program, "ortho_projection");
+	assert(ortho_proj_location1 != -1);
+	glUniformMatrix4fv(ortho_proj_location1, 1, GL_FALSE, glm::value_ptr(ortho_proj));
+
+	unsigned int bitmap_atlas_texture = create_bitmap_font_atlas_texture("fonts/AdwaitaMono-Regular.ttf", render->renderchar_arena, 24, 16, 8, 0, 128);
 	render->bitmap_atlas_texture = bitmap_atlas_texture;
 
 	float quad_VBO[] = {
@@ -115,10 +126,18 @@ void init_render_data(Renderer* render, const std::string v_shader_path, const s
 
 	unsigned int EBO;
 	unsigned int VBO;
+	unsigned int char_VBO;
+	unsigned int offset_VBO;
 
 	glGenVertexArrays(1, &render->quad_VAO);
+	glGenVertexArrays(1, &render->char_instance_VAO);
 	glGenBuffers(1, &VBO);
 	glGenBuffers(1, &EBO);
+	glGenBuffers(1, &char_VBO);
+	glGenBuffers(1, &offset_VBO);
+
+	render->char_VBO = char_VBO;
+	render->offset_VBO = offset_VBO;
 
 	glBindVertexArray(render->quad_VAO);
 
@@ -137,25 +156,124 @@ void init_render_data(Renderer* render, const std::string v_shader_path, const s
 	glEnableVertexAttribArray(1);
 
 	glBindVertexArray(0);
+
+	glBindVertexArray(render->char_instance_VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad_VBO), quad_VBO, GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quad_EBO), quad_EBO, GL_STATIC_DRAW);
+
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	
+	glBindBuffer(GL_ARRAY_BUFFER, render->char_VBO);
+	glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+	glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+	glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+	glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+
+	glEnableVertexAttribArray(3);
+	glEnableVertexAttribArray(4);
+	glEnableVertexAttribArray(5);
+	glEnableVertexAttribArray(6);
+
+	glVertexAttribDivisor(3, 1);
+	glVertexAttribDivisor(4, 1);
+	glVertexAttribDivisor(5, 1);
+	glVertexAttribDivisor(6, 1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, render->offset_VBO);
+	glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+	glEnableVertexAttribArray(2);
+	glVertexAttribDivisor(2, 1);
+
+	glBindVertexArray(0);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+void render_piecetable(Renderer* render, const PieceTable* table, char* type_buffer, const unsigned int line_spacing, const unsigned int margin_width)
+{
+	const std::vector<Piece*>& piece_table = table->piece_list;
+	std::vector<glm::mat4> char_model_matrices;
+	std::vector<glm::vec4> char_uv_coords;
+
+	float x_pos = line_spacing;
+	float y_pos = 24;
+
+	float char_x_pos = line_spacing;
+	float char_y_pos = 0;
+
+	Piece* curr_piece;
+
+	glm::mat4 model = glm::mat4(1.0f);
+
+	for(size_t i = 0; i < piece_table.size(); i ++)
+	{
+		curr_piece = piece_table[i];
+
+		for(char* j = curr_piece->buffer + curr_piece->offset; j < (curr_piece->buffer + curr_piece->length); j ++)
+		{
+			if(*j == '\n')
+			{
+				continue;
+			}
+
+			RenderChar* char_info = renderchar_map[*j];
+
+			char_x_pos = x_pos + char_info->bearing.x;
+			char_y_pos = y_pos - char_info->bearing.y;
+
+			model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
+			model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
+
+			char_model_matrices.push_back(model);
+			char_uv_coords.push_back(char_info->uv_coords);
+			model = glm::mat4(1.0f);
+
+			x_pos += (char_info->advance >> 6);
+		}
+
+	}
+
+	assert(char_model_matrices.size() > 0 && char_model_matrices.size() == char_uv_coords.size());
+
+	glUseProgram(render->char_shader_program);
+
+	glBindVertexArray(render->char_instance_VAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, render->char_VBO);
+	glBufferData(GL_ARRAY_BUFFER, char_model_matrices.size() * sizeof(glm::mat4), char_model_matrices.data(), GL_DYNAMIC_DRAW);
+
+	glBindBuffer(GL_ARRAY_BUFFER, render->offset_VBO);
+	glBufferData(GL_ARRAY_BUFFER, char_uv_coords.size() * sizeof(glm::vec4), char_uv_coords.data(), GL_DYNAMIC_DRAW);
+
+	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0, char_uv_coords.size()); 
+	glBindVertexArray(0);
 }
 
 void render_character(Renderer* render, glm::vec2 position, unsigned char character)
 {	
-	glUseProgram(render->shader_program);
+	glUseProgram(render->quad_shader_program);
 
 	glm::mat4 model = glm::mat4(1.0f);
 
 	model = glm::translate(model, glm::vec3(position, 0.0f));
 	model = glm::scale(model, glm::vec3(renderchar_map[character]->size, 1.0f));
 
-	int model_ptr = glGetUniformLocation(render->shader_program, "model");
+	int model_ptr = glGetUniformLocation(render->quad_shader_program, "model");
 	assert(model_ptr != -1);
 	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
 
-	int shader_UV = glGetUniformLocation(render->shader_program, "offset");
+	int shader_UV = glGetUniformLocation(render->quad_shader_program, "offset");
 	assert(shader_UV != -1);
 	glm::fvec4 uv_coords = renderchar_map[character]->uv_coords;
-
 	glUniform4f(shader_UV, uv_coords.x, uv_coords.y, uv_coords.z, uv_coords.w);
 
 	glBindTexture(GL_TEXTURE_2D, render->bitmap_atlas_texture);
@@ -166,18 +284,18 @@ void render_character(Renderer* render, glm::vec2 position, unsigned char charac
 
 void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 {
-	glUseProgram(render->shader_program);
+	glUseProgram(render->quad_shader_program);
 
 	glm::mat4 model = glm::mat4(1.0f);
 
 	model = glm::translate(model, glm::vec3(position, 0.0f));
 	model = glm::scale(model, glm::vec3(size, 1.0f));
 
-	int model_ptr = glGetUniformLocation(render->shader_program, "model");
+	int model_ptr = glGetUniformLocation(render->quad_shader_program, "model");
 	assert(model_ptr != -1);
 	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
 
-	int shader_UV = glGetUniformLocation(render->shader_program, "offset");
+	int shader_UV = glGetUniformLocation(render->quad_shader_program, "offset");
 	assert(shader_UV != -1);
 	glUniform4f(shader_UV, 0.0f, 0.0f, 1.0f, 1.0f);
 

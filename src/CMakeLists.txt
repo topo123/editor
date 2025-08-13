@@ -6,4 +6,4 @@ add_library(piece_table ${CMAKE_CURRENT_SOURCE_DIR}/piece/PieceTable.cpp)
 add_library(renderer ${CMAKE_CURRENT_SOURCE_DIR}/renderer/renderer.cpp)
 
 target_link_libraries(piece_table allocator)
-target_link_libraries(renderer freetype allocator)
+target_link_libraries(renderer freetype allocator piece_table)
