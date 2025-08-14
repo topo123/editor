@@ -8,7 +8,7 @@
 const size_t PIECE_ALIGN = 8;
 const size_t DEFAULT_ALIGN = 8;
 
-PieceTable *init_piece_table(const std::string file_name, size_t type_buffer_size, size_t init_num_pieces) {
+PieceTable *init_piece_table(const std::string file_name, TypeBuffer* type_buffer, size_t type_buffer_size, size_t init_num_pieces) {
   std::ifstream text_file(file_name);
   char c = '\0';
   std::string file = "";
@@ -22,9 +22,14 @@ PieceTable *init_piece_table(const std::string file_name, size_t type_buffer_siz
     file += c;
   }
 
-  PieceTable *table = new PieceTable();
+  PieceTable* table = new PieceTable();
   table->mem_pieces = init_bump_arena(sizeof(Piece) * init_num_pieces, PIECE_ALIGN);
-  table->text = init_bump_arena(type_buffer_size + file.size(), DEFAULT_ALIGN);
+  table->text = init_bump_arena(type_buffer_size + file.size() + sizeof(TypeBuffer), DEFAULT_ALIGN);
+
+  type_buffer->buffer = (char*)bump_alloc(table->text, type_buffer_size, DEFAULT_ALIGN);
+  type_buffer->size = type_buffer_size;
+  type_buffer->reset_size = type_buffer_size;
+  type_buffer->offset = 0;
 
   char *original_buffer = (char *)bump_alloc(table->text, file.size(), 1);
   std::memcpy(original_buffer, file.data(), file.size());

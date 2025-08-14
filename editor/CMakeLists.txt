@@ -1,2 +1,2 @@
 add_executable(main main.cpp)
-target_link_libraries(main glfw glad renderer piece_table)
+target_link_libraries(main glfw glad renderer piece_table input_events)

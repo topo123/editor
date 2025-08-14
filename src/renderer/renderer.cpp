@@ -198,11 +198,13 @@ void init_render_data(Renderer* render)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-void render_piecetable(Renderer* render, const PieceTable* table, char* type_buffer, const unsigned int line_spacing, const unsigned int margin_width)
+void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* type_buffer, const unsigned int line_spacing, const unsigned int margin_width)
 {
 	const std::vector<Piece*>& piece_table = table->piece_list;
 	std::vector<glm::mat4> char_model_matrices;
 	std::vector<glm::vec4> char_uv_coords;
+
+	size_t curr_cursor_pos = 0;
 
 	float x_pos = line_spacing;
 	float y_pos = 24;
@@ -217,12 +219,51 @@ void render_piecetable(Renderer* render, const PieceTable* table, char* type_buf
 	for(size_t i = 0; i < piece_table.size(); i ++)
 	{
 		curr_piece = piece_table[i];
+		curr_cursor_pos = curr_piece->offset;
+
 
 		for(char* j = curr_piece->buffer + curr_piece->offset; j < (curr_piece->buffer + curr_piece->length); j ++)
 		{
 			if(*j == '\n')
 			{
 				continue;
+			}
+
+			if(i == table->piece_index && table->cursor_pos == curr_cursor_pos)
+			{
+				for(char* k = type_buffer->buffer; k < (type_buffer->buffer + type_buffer->offset); k ++)
+				{
+					RenderChar* char_info = renderchar_map[*k];
+
+					char_x_pos = x_pos + char_info->bearing.x;
+					char_y_pos = y_pos - char_info->bearing.y;
+
+					model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
+					model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
+
+					char_model_matrices.push_back(model);
+					char_uv_coords.push_back(char_info->uv_coords);
+					model = glm::mat4(1.0f);
+
+					x_pos += (char_info->advance >> 6);
+				}
+				for(char* k = type_buffer->buffer + type_buffer->offset + type_buffer->size; 
+				k < (type_buffer->buffer + type_buffer->reset_size); k ++)
+				{
+					RenderChar* char_info = renderchar_map[*k];
+
+					char_x_pos = x_pos + char_info->bearing.x;
+					char_y_pos = y_pos - char_info->bearing.y;
+
+					model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
+					model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
+
+					char_model_matrices.push_back(model);
+					char_uv_coords.push_back(char_info->uv_coords);
+					model = glm::mat4(1.0f);
+
+					x_pos += (char_info->advance >> 6);
+				}
 			}
 
 			RenderChar* char_info = renderchar_map[*j];
@@ -238,8 +279,9 @@ void render_piecetable(Renderer* render, const PieceTable* table, char* type_buf
 			model = glm::mat4(1.0f);
 
 			x_pos += (char_info->advance >> 6);
-		}
 
+			curr_cursor_pos ++;
+		}
 	}
 
 	assert(char_model_matrices.size() > 0 && char_model_matrices.size() == char_uv_coords.size());
