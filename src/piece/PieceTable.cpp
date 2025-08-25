@@ -54,28 +54,26 @@ PieceTable *init_piece_table(const std::string file_name, TypeBuffer* type_buffe
 
 void rdelete_text(PieceTable* table, size_t num_chars) {
 
-  if(table->cursor_pos > 0 && 
-    table->cursor_pos + num_chars < table->piece_list[table->piece_index]->length + table->piece_list[table->piece_index]->offset)
+  if(table->cursor_pos > table->piece_list[table->piece_index]->offset && 
+    table->cursor_pos + num_chars < table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length) 
   {
     Piece* old_piece = table->piece_list[table->piece_index];
     Piece* new_piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
 
     size_t old_length = old_piece->length;
-    old_piece->length = table->cursor_pos - old_piece->offset;
+    old_piece->length = table->cursor_pos - old_piece->offset + 1;
 
     table->piece_list.insert(table->piece_list.begin() + table->piece_index + 1, new_piece);
 
     new_piece->buffer = old_piece->buffer;
-    new_piece->offset = table->cursor_pos + num_chars;
+    new_piece->offset = table->cursor_pos + num_chars + 1;
     new_piece->piece_type = old_piece->piece_type;
     new_piece->length = old_length - num_chars - old_piece->length; 
 
-    table->piece_index ++;
-    table->cursor_pos = new_piece->offset;
     return;
   }
-
-  if(table->cursor_pos > 0 && 
+  /*
+  else if(table->cursor_pos > table->piece_list[table->piece_index]->offset && 
     table->cursor_pos + num_chars >= table->piece_list[table->piece_index]->length + table->piece_list[table->piece_index]->offset)
   {
     Piece* piece = table->piece_list[table->piece_index];
@@ -93,11 +91,9 @@ void rdelete_text(PieceTable* table, size_t num_chars) {
       table->cursor_pos = table->piece_list[table->piece_index]->offset;
     }
   }
+  */
 
-  //hello
-  //offset 1
-  //4 chars delete
-
+  rseek(table, 1);
   while (num_chars > 0) {
     Piece *piece = table->piece_list[table->piece_index];
 
@@ -107,8 +103,9 @@ void rdelete_text(PieceTable* table, size_t num_chars) {
     }
 
     if (table->cursor_pos + num_chars >= piece->length + piece->offset) {
-      num_chars -= piece->length - table->cursor_pos;
-      piece->length = 0;
+      num_chars -= (piece->length + piece->offset - 1) - table->cursor_pos;
+      piece->offset = table->cursor_pos;
+      piece->length -= (piece->length + piece->offset - 1) - table->cursor_pos;
       table->piece_index ++;
       table->cursor_pos = table->piece_list[table->piece_index]->offset;
       table->abs_cursor_pos += piece->length;
@@ -118,6 +115,108 @@ void rdelete_text(PieceTable* table, size_t num_chars) {
       piece->offset += num_chars;
       piece->length -= num_chars;
       num_chars = 0;
+    }
+  }
+
+  if(table->piece_list[table->piece_index]->length > 0)
+  {
+    lseek(table, 1);
+  }
+
+  while(table->piece_list[table->piece_index]->length == 0 && table->piece_index - 1 > 0)
+  {
+    table->piece_index --;
+    if(table->piece_list[table->piece_index]->length > 0)
+    {
+      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
+    }
+  }
+
+}
+
+void ldelete_text(PieceTable* table, size_t num_chars) {
+
+  if(table->cursor_pos < table->piece_list[table->piece_index]->length + table->piece_list[table->piece_index]->offset && 
+    (int)table->cursor_pos - (int)num_chars > (int)table->piece_list[table->piece_index]->offset) {
+
+    Piece* old_piece = table->piece_list[table->piece_index];
+    Piece* new_piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
+
+    size_t old_length = old_piece->length;
+    old_piece->length = table->cursor_pos - num_chars - old_piece->offset;
+
+    table->piece_list.insert(table->piece_list.begin() + table->piece_index + 1, new_piece);
+
+    new_piece->buffer = old_piece->buffer;
+    new_piece->offset = table->cursor_pos;
+    new_piece->piece_type = old_piece->piece_type;
+    new_piece->length = old_length - num_chars - old_piece->length; 
+
+    table->piece_index ++;
+    table->cursor_pos = new_piece->offset;
+    return;
+  }
+  /*  
+  if(table->cursor_pos < table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1 && 
+    (int)table->cursor_pos - (int)num_chars < (int)table->piece_list[table->piece_index]->offset)  
+  {
+    Piece* piece = table->piece_list[table->piece_index];
+    size_t deleted_chars = table->cursor_pos - piece->offset + 1;
+    piece->length -= table->cursor_pos - piece->offset + 1;  
+    piece->offset = table->cursor_pos + 1;
+
+    if(table->cursor_pos == 0)
+    {
+      table->cursor_pos = piece->offset;
+      return;
+    }
+    else
+    {
+      table->piece_index --;
+      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
+    }
+    num_chars -= deleted_chars;
+  }
+  */
+
+  lseek(table, 1);
+  while (num_chars > 0) {
+    Piece *piece = table->piece_list[table->piece_index];
+
+    if (table->piece_index == 0 && (int)table->cursor_pos - (int)num_chars < (int)piece->offset ) {
+      piece->offset = table->cursor_pos;
+      table->cursor_pos = 0;
+      piece->length = 0;
+      break;
+    }
+
+    if ((int)table->cursor_pos - (int)num_chars < (int)piece->offset) {
+      num_chars -= table->cursor_pos - piece->offset + 1;
+      piece->length -= table->cursor_pos - piece->offset + 1;
+      piece->offset = table->cursor_pos + 1;
+      table->piece_index --;
+      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
+      table->abs_cursor_pos -= (table->cursor_pos - piece->offset + 1);
+    } else {
+      assert(table->cursor_pos == (piece->offset + piece->length - 1));
+      piece->length -= num_chars + piece->offset;
+      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
+      table->abs_cursor_pos -= num_chars;
+      num_chars = 0;
+    }
+  }
+
+  if(table->piece_list[table->piece_index]->length > 0)
+  {
+    rseek(table, 1);
+  }
+
+  while(table->piece_list[table->piece_index]->length == 0 && table->piece_index + 1 < table->piece_list.size())
+  {
+    table->piece_index ++;
+    if(table->piece_list[table->piece_index]->length > 0)
+    {
+      table->cursor_pos = table->piece_list[table->piece_index]->offset;
     }
   }
 }
@@ -145,89 +244,20 @@ void rseek(PieceTable *table, size_t offset) {
   }
 }
 
-void ldelete_text(PieceTable* table, size_t num_chars) {
-
-  if(table->cursor_pos < table->piece_list[table->piece_index]->length + table->piece_list[table->piece_index]->offset - 1 && 
-    (int)table->cursor_pos - ((int)num_chars + (int)table->piece_list[table->piece_index]->offset) + 1 > 0) {
-
-    Piece* old_piece = table->piece_list[table->piece_index];
-    Piece* new_piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
-
-    size_t old_length = old_piece->length;
-    old_piece->length = table->cursor_pos - num_chars - old_piece->offset + 1;
-
-    table->piece_list.insert(table->piece_list.begin() + table->piece_index + 1, new_piece);
-
-    new_piece->buffer = old_piece->buffer;
-    new_piece->offset = table->cursor_pos + 1;
-    new_piece->piece_type = old_piece->piece_type;
-    new_piece->length = old_length - num_chars - old_piece->length; 
-
-    table->piece_index ++;
-    table->cursor_pos = new_piece->offset;
-    return;
-  }
-
-  if(table->cursor_pos < table->piece_list[table->piece_index]->length + table->piece_list[table->piece_index]->offset - 1 && 
-    (int)table->cursor_pos - ((int)num_chars + (int)table->piece_list[table->piece_index]->offset) + 1 <= 0) 
-  {
-    Piece* piece = table->piece_list[table->piece_index];
-    size_t deleted_chars = table->cursor_pos - piece->offset + 1;
-    piece->length -= table->cursor_pos - piece->offset + 1;  
-    piece->offset = table->cursor_pos + 1;
-
-    if(table->cursor_pos == 0)
-    {
-      table->cursor_pos = piece->offset;
-      return;
-    }
-    else
-    {
-      table->piece_index --;
-      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
-    }
-    num_chars -= deleted_chars;
-  }
-
-
-  while (num_chars > 0) {
-    Piece *piece = table->piece_list[table->piece_index];
-
-    if (table->piece_index == 0 && (int)table->cursor_pos - ((int)piece->offset + (int)num_chars) < 0) {
-      table->cursor_pos = 0;
-      piece->length = 0;
-      break;
-    }
-
-    if ((int)table->cursor_pos - ((int)piece->offset + (int)num_chars) < 0) {
-      num_chars -= table->cursor_pos - piece->offset + 1;
-      piece->length = 0;
-      table->piece_index --;
-      table->cursor_pos = table->piece_list[table->piece_index]->length - 1;
-      table->abs_cursor_pos -= (table->cursor_pos - piece->offset + 1);
-    } else {
-      piece->length -= num_chars + piece->offset;
-      table->cursor_pos = piece->offset;
-      table->abs_cursor_pos -= num_chars;
-      num_chars = 0;
-    }
-  }
-}
-
 void lseek(PieceTable *table, size_t offset) {
   while (offset > 0) {
-    Piece *piece = table->piece_list[table->piece_index];
+    Piece* piece = table->piece_list[table->piece_index];
 
-    if (table->piece_index == 0 && (int)table->cursor_pos - ((int)offset + (int)piece->offset) < 0) {
+    if (table->piece_index == 0 && (int)table->cursor_pos - (int)offset < (int)piece->offset) {
       table->cursor_pos = 0;
       table->abs_cursor_pos = 0;
       break;
     }
 
-    if ((int)table->cursor_pos - ((int)offset + (int)piece->offset) < 0) {
+    if ((int)table->cursor_pos - (int)offset < (int)piece->offset) {
       offset -= (table->cursor_pos - piece->offset + 1);
       table->piece_index--;
-      table->cursor_pos = table->piece_list[table->piece_index]->length - 1;
+      table->cursor_pos = table->piece_list[table->piece_index]->offset + table->piece_list[table->piece_index]->length - 1;
       table->abs_cursor_pos -= (table->cursor_pos - piece->offset + 1);
     } else {
       table->cursor_pos -= offset;
@@ -241,7 +271,7 @@ void insert_text(PieceTable* table, char* buffer, size_t buffer_size) {
   char* new_text = (char*)bump_alloc(table->text, buffer_size, 1);
   std::memcpy(new_text, buffer, buffer_size);
 
-  if (table->cursor_pos == table->piece_list[table->piece_index]->length - 1) {
+  /*if (table->cursor_pos == table->piece_list[table->piece_index]->length - 1) {
     Piece* piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
 
     piece->buffer = new_text;
@@ -253,7 +283,10 @@ void insert_text(PieceTable* table, char* buffer, size_t buffer_size) {
     table->piece_index ++;
     table->cursor_pos = piece->length - 1;
     return;
-  } else if (table->piece_list[table->piece_index]->length == 0) {
+  } 
+  */
+  //TODO: Change this so when at last character at piecetable it merges the last character with the new piece to prevent single character pieces
+  if (table->piece_list[table->piece_index]->length == 0) {
     Piece* piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
 
     piece->buffer = new_text;
@@ -267,7 +300,7 @@ void insert_text(PieceTable* table, char* buffer, size_t buffer_size) {
 
   Piece* former_piece = table->piece_list[table->piece_index];
   size_t old_length = former_piece->length;
-  former_piece->length = table->cursor_pos - former_piece->offset + 1;
+  former_piece->length = table->cursor_pos - former_piece->offset;
 
   Piece* new_text_piece = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
   Piece* latter_split = (Piece*)bump_alloc(table->mem_pieces, sizeof(Piece), PIECE_ALIGN);
@@ -281,14 +314,13 @@ void insert_text(PieceTable* table, char* buffer, size_t buffer_size) {
   new_text_piece->piece_type = EDIT;
 
   latter_split->buffer = former_piece->buffer;
-  latter_split->offset = table->cursor_pos + 1;
+  latter_split->offset = table->cursor_pos;
   latter_split->piece_type = former_piece->piece_type;
-  latter_split->length = old_length - latter_split->offset;
+  latter_split->length = former_piece->offset + old_length - latter_split->offset;
 
-  table->cursor_pos = new_text_piece->length - 1;
   table->abs_cursor_pos += buffer_size;
   table->text_size += buffer_size;
-  table->piece_index ++;
+  table->piece_index += 2;
 }
 
 void free_table(PieceTable* table)

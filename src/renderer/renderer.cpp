@@ -11,7 +11,25 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <map>
 #include <cstring>
+
+#define CURSOR_WIDTH 10.0f
+#define CURSOR_HEIGHT 20.0f
+
 std::map<unsigned char, RenderChar*> renderchar_map;
+
+std::string vector_format(float x, float y)
+{
+	return "(" + std::to_string(x) + ", " + std::to_string(y) + ")";
+}
+
+void print_char_metrics(char c)
+{
+	RenderChar* char_metrics = renderchar_map[c];
+	std::cout << c << " metrics \n";
+	std::cout << "Size: " << vector_format(char_metrics->size.x, char_metrics->size.y) << "\n";
+	std::cout << "Advance: " << std::to_string(char_metrics->advance) << "\n";
+	std::cout << "Bearing: " << vector_format(char_metrics->bearing.x, char_metrics->bearing.y) << std::endl;
+}
 
 int compile_shaders(const std::string vertex_shader_path, const std::string frag_shader_path)
 {
@@ -198,6 +216,7 @@ void init_render_data(Renderer* render)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
+
 void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* type_buffer, const unsigned int line_spacing, const unsigned int margin_width)
 {
 	const std::vector<Piece*>& piece_table = table->piece_list;
@@ -206,10 +225,13 @@ void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* ty
 
 	size_t curr_cursor_pos = 0;
 
-	float x_pos = line_spacing;
-	float y_pos = 24;
+	float x_pos = margin_width;
+	float y_pos = line_spacing;
 
-	float char_x_pos = line_spacing;
+	float cursor_x_pos = 0;
+	float cursor_y_pos = 0;
+
+	float char_x_pos = margin_width;
 	float char_y_pos = 0;
 
 	Piece* curr_piece;
@@ -222,21 +244,44 @@ void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* ty
 		curr_cursor_pos = curr_piece->offset;
 
 
-		for(char* j = curr_piece->buffer + curr_piece->offset; j < (curr_piece->buffer + curr_piece->length); j ++)
+		for(char* j = curr_piece->buffer + curr_piece->offset; j < (curr_piece->buffer + curr_piece->offset + curr_piece->length); j ++)
 		{
 			if(*j == '\n')
 			{
+				y_pos += line_spacing;
+				x_pos = margin_width;
 				continue;
 			}
 
-			if(i == table->piece_index && table->cursor_pos == curr_cursor_pos)
+			if(type_buffer->size < type_buffer->reset_size && i == table->piece_index && table->cursor_pos == curr_cursor_pos)
 			{
-				for(char* k = type_buffer->buffer; k < (type_buffer->buffer + type_buffer->offset); k ++)
+				size_t copy_buffer_size = type_buffer->reset_size -  type_buffer->size;
+				size_t copy_buffer_offset = 0;
+				char copy_buffer[copy_buffer_size];
+				
+
+				std::memcpy(copy_buffer, type_buffer->buffer, type_buffer->offset);
+				std::memcpy(copy_buffer + type_buffer->offset, type_buffer->buffer + type_buffer->offset + type_buffer->size, type_buffer->reset_size - (type_buffer->offset + type_buffer->size));
+
+				for(char* k = copy_buffer; k < copy_buffer + copy_buffer_size; k ++)
 				{
 					RenderChar* char_info = renderchar_map[*k];
 
 					char_x_pos = x_pos + char_info->bearing.x;
+					if(char_x_pos >  800 - margin_width)
+					{
+						char_x_pos = margin_width;
+						x_pos = margin_width;
+						y_pos += line_spacing;
+					}
 					char_y_pos = y_pos - char_info->bearing.y;
+
+					if(copy_buffer_offset == type_buffer->offset + type_buffer->size - type_buffer->size && 
+						type_buffer->offset + type_buffer->size < type_buffer->reset_size)
+					{
+						cursor_x_pos = *j == ' '? char_x_pos - (CURSOR_WIDTH - (float)(char_info->advance >> 6))/2.0f: char_x_pos - (CURSOR_WIDTH - (float)char_info->size.x)/2.0f;
+						cursor_y_pos = char_y_pos - (CURSOR_HEIGHT - (float)char_info->size.y);
+					}
 
 					model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
 					model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
@@ -246,30 +291,27 @@ void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* ty
 					model = glm::mat4(1.0f);
 
 					x_pos += (char_info->advance >> 6);
-				}
-				for(char* k = type_buffer->buffer + type_buffer->offset + type_buffer->size; 
-				k < (type_buffer->buffer + type_buffer->reset_size); k ++)
-				{
-					RenderChar* char_info = renderchar_map[*k];
-
-					char_x_pos = x_pos + char_info->bearing.x;
-					char_y_pos = y_pos - char_info->bearing.y;
-
-					model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
-					model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
-
-					char_model_matrices.push_back(model);
-					char_uv_coords.push_back(char_info->uv_coords);
-					model = glm::mat4(1.0f);
-
-					x_pos += (char_info->advance >> 6);
+					copy_buffer_offset ++;
 				}
 			}
 
 			RenderChar* char_info = renderchar_map[*j];
 
 			char_x_pos = x_pos + char_info->bearing.x;
+			if(char_x_pos >  800 - margin_width)
+			{
+				char_x_pos = margin_width;
+				x_pos = margin_width;
+				y_pos += line_spacing;
+			}
 			char_y_pos = y_pos - char_info->bearing.y;
+
+			if(type_buffer->offset + type_buffer->size == type_buffer->reset_size 
+				&& i == table->piece_index && table->cursor_pos == curr_cursor_pos)
+			{
+				cursor_x_pos = *j == ' '? char_x_pos - (CURSOR_WIDTH - (float)(char_info->advance >> 6))/2.0f: char_x_pos - (CURSOR_WIDTH - (float)char_info->size.x)/2.0f;
+				cursor_y_pos = char_y_pos - (CURSOR_HEIGHT - (float)char_info->size.y);
+			}
 
 			model = glm::translate(model, glm::vec3(glm::vec2(char_x_pos, char_y_pos), 0.0f));
 			model = glm::scale(model, glm::vec3(glm::vec2(char_info->size.x, char_info->size.y), 1.0f));
@@ -284,6 +326,8 @@ void render_piecetable(Renderer* render, const PieceTable* table, TypeBuffer* ty
 		}
 	}
 
+
+	render_quad(render, {CURSOR_WIDTH, CURSOR_HEIGHT}, {cursor_x_pos, cursor_y_pos});
 	assert(char_model_matrices.size() > 0 && char_model_matrices.size() == char_uv_coords.size());
 
 	glUseProgram(render->char_shader_program);
@@ -324,7 +368,7 @@ void render_character(Renderer* render, glm::vec2 position, unsigned char charac
 	glBindVertexArray(0);
 }
 
-void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
+void render_bitmap_atlas(Renderer *render, glm::vec2 size, glm::vec2 position)
 {
 	glUseProgram(render->quad_shader_program);
 
@@ -332,6 +376,10 @@ void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 
 	model = glm::translate(model, glm::vec3(position, 0.0f));
 	model = glm::scale(model, glm::vec3(size, 1.0f));
+
+	int use_tex_ptr = glGetUniformLocation(render->quad_shader_program, "use_texture");
+	assert(use_tex_ptr != -1);
+	glUniform1i(use_tex_ptr, true);
 
 	int model_ptr = glGetUniformLocation(render->quad_shader_program, "model");
 	assert(model_ptr != -1);
@@ -346,6 +394,28 @@ void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	glBindVertexArray(0);
 
+}
+
+void render_quad(Renderer* render, glm::vec2 size, glm::vec2 position)
+{
+	glUseProgram(render->quad_shader_program);
+
+	glm::mat4 model = glm::mat4(1.0f);
+
+	model = glm::translate(model, glm::vec3(position, 0.0f));
+	model = glm::scale(model, glm::vec3(size, 1.0f));
+
+	int use_tex_ptr = glGetUniformLocation(render->quad_shader_program, "use_texture");
+	assert(use_tex_ptr != -1);
+	glUniform1i(use_tex_ptr, false);
+
+	int model_ptr = glGetUniformLocation(render->quad_shader_program, "model");
+	assert(model_ptr != -1);
+	glUniformMatrix4fv(model_ptr, 1, GL_FALSE, glm::value_ptr(model));
+
+	glBindVertexArray(render->quad_VAO);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	glBindVertexArray(0);
 }
 
 int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* renderchar_arena, const unsigned int text_height, const unsigned int horz_bitmap_cells, const unsigned int vert_bitmap_cells, unsigned char starting_character, unsigned char ending_character)
@@ -445,6 +515,7 @@ int create_bitmap_font_atlas_texture(const std::string font_path, BumpArena* ren
 		}
 
 	}
+
 
 	unsigned int bitmap_atlas_texture;  
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);

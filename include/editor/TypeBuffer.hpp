@@ -11,8 +11,8 @@ struct TypeBuffer{
 #include <PieceTable.hpp>
 
 void insert_char(TypeBuffer* type_buffer, PieceTable* table, char c);
-void rdelete_char(TypeBuffer* type_buffer, PieceTable* table, size_t num_chars);
-void ldlete_char(TypeBuffer* type_buffer, PieceTable* table, size_t num_chars);
-inline void lseek(TypeBuffer* type_buffer, PieceTable* table, size_t num_chars);
-inline void rseek(TypeBuffer* type_buffer, PieceTable* table, size_t  num_chars);
-inline void reset_type_buffer(TypeBuffer* type_buffer);
+void rdelete_char(TypeBuffer* type_buffer, PieceTable* table, int num_chars);
+void ldelete_char(TypeBuffer* type_buffer, PieceTable* table, int num_chars);
+void lseek(TypeBuffer* type_buffer, PieceTable* table, int num_chars);
+void rseek(TypeBuffer* type_buffer, PieceTable* table, int  num_chars);
+void reset_type_buffer(TypeBuffer* type_buffer);

@@ -47,12 +47,13 @@ int main(){
 	glfwSetWindowUserPointer(window, &info);
 	glfwSetFramebufferSizeCallback(window, framebuffer_callback);
 	glfwSetCharCallback(window, character_processing);
+	glfwSetKeyCallback(window, key_processing);
 
 	while(!glfwWindowShouldClose(window))
 	{
 		glClearColor(0.350f, 0.35f, 0.35f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		render_piecetable(&render, table, &type_buffer, 10, 10);
+		render_piecetable(&render, table, &type_buffer, 24, 10);
 		//render_character(&render, glm::vec2(300, 300), 'k');
 		//render_quad(&render, glm::vec2(200.0f, 200.0f), glm::vec2(10.0f, 10.0f));
 		glfwSwapBuffers(window);
